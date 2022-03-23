@@ -1,5 +1,7 @@
-Cython==0.29.28
+setuptools==60.10.0
+Cython==0.28
 numpy==1.21
 networkx==2.7.1
 osmnx==1.1.2
 grpcio-tools==1.44.0
+pyproj==3.2
