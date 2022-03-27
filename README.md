@@ -1,5 +1,8 @@
 # Joy Ride
 
+![TechStack](techStack_Diagram.png)
+
+
 ## Setup
 Run `pip3 install -r requirements.txt` to install all needed Python3 dependencies.
 
