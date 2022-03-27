@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.joyride";
+option java_outer_classname = "JoyrideProto";
+option objc_class_prefix = "HLW";
+
+package joyride;
+
+// The greeting service definition.
+service JoyRide {
+  // Sends a greeting
+  rpc GetJoyRide (RideRequest) returns (RideReply) {}
+}
+
+// The request message containing the user's name.
+message RideRequest {
+  string start = 1;
+  string end = 2;
+  int32 time = 3;
+}
+
+// The response message containing the greetings
+message RideReply {
+  string message = 1;
+}

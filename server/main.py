@@ -9,8 +9,8 @@ import osmnx as ox
 import grpc
 import googlemaps
 
-from gen import route_guide_pb2
-from gen import route_guide_pb2_grpc
+from gen import joyride_pb2
+from gen import joyride_pb2_grpc
 
 
 # Osmnx config options
@@ -20,31 +20,20 @@ ox.config(use_cache=True, log_console=True)
 gmaps = googlemaps.Client(key=config("GMAPS_KEY"))
 
 
-class RouteGuideServicer(route_guide_pb2_grpc.RouteGuideServicer):
-    """ Provides methods that implement functionality of route guide server.
-    """
+class Joyride(joyride_pb2_grpc.JoyRideServicer):
 
-    def __init__(self):
-        #self.G = graph
-        pass
+    def __init__(self, graph):
+        self.G = graph
 
-    def GetJoyride(self, request, context):
-        print("hello!")
-        res = gmaps.geocode(request.start)
-        res2 = gmaps.geocode(request.end)
-        print(res)
-        return route_guide_pb2.Ride(node1=1,node2=3)
+    def GetJoyRide(self, request, context):
+        return joyride_pb2.RideReply(message="{}, {}, {}".format(request.start, request.end, request.time))
 
 
-def start_server(port, G):
-    """ Starts the gRPC server listening on the specified port
-    """
+def serve(port, graph):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    route_guide_pb2_grpc.add_RouteGuideServicer_to_server(RouteGuideServicer(), server)
-
+    joyride_pb2_grpc.add_JoyRideServicer_to_server(Joyride(graph), server)
     server.add_insecure_port("[::]:{}".format(port))
     server.start()
-    print("Started server on port: {}".format(port))
     server.wait_for_termination()
 
 
@@ -74,4 +63,4 @@ if __name__ == "__main__":
     radius = int(sys.argv[3])
 
     G = load_data(location, radius * 1.6 * 1000)  # Convert miles to meters
-    start_server(port, G)
+    serve(port, G)

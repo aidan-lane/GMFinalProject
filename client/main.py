@@ -1,24 +1,18 @@
+from __future__ import print_function
 import sys
 import logging
 
 import grpc
 
-from gen import route_guide_pb2
-from gen import route_guide_pb2_grpc
+from gen import joyride_pb2
+from gen import joyride_pb2_grpc
 
 
-def guide_get_joyride(stub):
-    ride = stub.GetJoyride(route_guide_pb2.Ride(start="Troy, NY", end="Albany, NY", minutes=0))
-    print('test', ride.node1)
-
-
-def start_client(ip, port):
-    """ Attempts to create a gRPC client and connect to given IP and port
-    """
+def run(ip, port):
     with grpc.insecure_channel("{}:{}".format(ip, port)) as channel:
-        print("Started client. Connected to {}:{}".format(ip, port))
-        stub = route_guide_pb2_grpc.RouteGuideStub(channel)
-        guide_get_joyride(stub)
+        stub = joyride_pb2_grpc.JoyRideStub(channel)
+        response = stub.GetJoyRide(joyride_pb2.RideRequest(start="s", end="e", time=0))
+    print("Greeter client received: " + response.message)
 
 
 if __name__ == "__main__":
@@ -30,4 +24,4 @@ if __name__ == "__main__":
 
     ip = sys.argv[1]
     port = sys.argv[2]
-    start_client(ip, port)
+    run(ip, port)
