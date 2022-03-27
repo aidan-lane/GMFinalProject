@@ -8,7 +8,8 @@ from gen import route_guide_pb2_grpc
 
 
 def guide_get_joyride(stub):
-    ride = stub.GetJoyride(route_guide_pb2.Ride(start="", end="", minutes=0))
+    ride = stub.GetJoyride(route_guide_pb2.Ride(start="Troy, NY", end="Albany, NY", minutes=0))
+    print('test', ride.node1)
 
 
 def start_client(ip, port):
