@@ -10,9 +10,10 @@ from gen import joyride_pb2_grpc
 
 def run(ip, port):
     with grpc.insecure_channel("{}:{}".format(ip, port)) as channel:
+        print("Connected to gRPC server {}:{}".format(ip, port))
         stub = joyride_pb2_grpc.JoyRideStub(channel)
-        response = stub.GetJoyRide(joyride_pb2.RideRequest(start="s", end="e", time=0))
-    print("Greeter client received: " + response.message)
+        response = stub.GetJoyRide(joyride_pb2.RideRequest(start="10 South Point Terrace, Kinnelon NJ", end="6 Stonybrook Trail, Kinnelon NJ", time=0))
+    print("Received: " + response.message)
 
 
 if __name__ == "__main__":
