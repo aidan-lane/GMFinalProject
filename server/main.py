@@ -1,13 +1,12 @@
-import sys
-import logging
-import time
 from concurrent import futures
+import logging
+import sys
+import time
 
 from decouple import config
+import grpc
 import networkx as nx
 import osmnx as ox
-import grpc
-import googlemaps
 
 from gen import joyride_pb2
 from gen import joyride_pb2_grpc
@@ -16,52 +15,75 @@ from gen import joyride_pb2_grpc
 # Osmnx config options
 ox.config(use_cache=True, log_console=True)
 
-# Google Maps API Key (geo-encoding)
-gmaps = googlemaps.Client(key=config("GMAPS_KEY"))
-
 
 class Joyride(joyride_pb2_grpc.JoyRideServicer):
+    """ Servicer for the JoyRide gRPC service.
+    """
 
     def __init__(self, graph):
         self.G = graph
 
     def GetJoyRide(self, request, context):
-        loc = gmaps.geocode(request.start)[0]["geometry"]["location"]
-        startx = loc["lng"]
-        starty = loc["lat"]
+        # Get latitude, longitude of the start and end points
+        start = ox.geocode(request.start)
+        end = ox.geocode(request.end)
+        starty, startx = start
+        endy, endx = end
 
-        loc2 = gmaps.geocode(request.end)[0]["geometry"]["location"]
-        endx = loc2["lng"]
-        endy = loc2["lat"]
-
+        # Find closest node (intersection) to each
         start_node = ox.nearest_nodes(self.G, startx, starty)
         end_node = ox.nearest_nodes(self.G, endx, endy)
 
-        print(start_node, " ", end_node)
-        print(self.G[start_node], "\n")
-        print(self.G[end_node], "\n")
+        # Find shortest path weighted on pre-computed travel time
+        #TODO(aidan) handle case where shortest path time is greater than requested time
+        route = nx.shortest_path(G, start_node, end_node, weight="travel_time")
 
-        return joyride_pb2.RideReply(message="{}, {}, {}".format(request.start, request.end, request.time))
+        return joyride_pb2.RideReply(message="{}, {}, {}".format(
+            request.start, request.end, request.time))
 
 
 def serve(port, graph):
+    """ Starts gRPC server instance
+
+    Starts the defined service class on the specified port, using data from the given
+    graph.
+
+    Args:
+        port: port number as string
+        graph: MultiDigraph to be queried by this service
+    """
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     joyride_pb2_grpc.add_JoyRideServicer_to_server(Joyride(graph), server)
     server.add_insecure_port("[::]:{}".format(port))
+
     server.start()
     print("Started server on port {}".format(port))
     server.wait_for_termination()
 
 
 def load_data(address, r):
-    print("Loading graph data...")
+    """ Loads initial road network data
+
+    Since we are dealing with a large amount of data from all over the world, we must
+    specify a subset of this entire road network graph so that this application remains
+    viable.
+
+    Args:
+        address: central point of graph
+        r: radius in meters around address to be loaded
+
+    Returns
+        NetworkX.MultiDiGraph
+
+    """
     start_time = time.time()
-    G = ox.graph_from_address(address, dist=r, simplify=False, network_type="drive", retain_all=True)
+    G = ox.graph_from_address(address, dist=r, simplify=False, network_type="drive")
     print("Finished loading graph in {:.4f} seconds.\n".format(time.time() - start_time))
 
     # Calculate travel time based on length, speed (km/h) for each edge
-    #G = ox.add_edge_speeds(G)
-    #G = ox.add_edge_travel_times(G)
+    G = ox.add_edge_speeds(G)
+    G = ox.add_edge_travel_times(G)
+    G = ox.add_edge_bearings(G)
     print()
 
     return G
