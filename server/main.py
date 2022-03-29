@@ -1,3 +1,4 @@
+import argparse
 from concurrent import futures
 import logging
 import sys
@@ -92,13 +93,17 @@ def load_data(address, r):
 if __name__ == "__main__":
     logging.basicConfig()
 
-    if len(sys.argv) != 4:
-        print("Please use correct arguments. [port] [location] [radius (in miles)]")
-        sys.exit(0)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("port", help="Port for gRPC instance to be started on", type=str)
+    parser.add_argument("location", 
+        help="Location/address for graph to be centered around", type=str)
+    parser.add_argument("radius", 
+        help="Radius around central point to be included in network", type=int)
 
-    port = sys.argv[1]
-    location = sys.argv[2]
-    radius = int(sys.argv[3])
+    try:
+        args = parser.parse_args()
+    except argparse.ArgumentError as e:
+        print(e.message, e.args)
 
-    G = load_data(location, int(radius * 1.6 * 1000))  # Convert miles to meters
-    serve(port, G)
+    G = load_data(args.location, int(args.radius * 1.6 * 1000))  # Convert miles to meters
+    serve(args.port, G)

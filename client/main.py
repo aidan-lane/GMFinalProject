@@ -1,7 +1,10 @@
+from __future__ import print_function
+
+import argparse
+import cmd
 from concurrent import futures
 import logging
 import math
-from __future__ import print_function
 import sys
 
 import grpc
@@ -119,6 +122,46 @@ def get_joyride(stub, start, end, time):
     return response
 
 
+class AppShell(cmd.Cmd):
+    prompt = ">>> "
+    intro = "Type help or ? to list commands.\n"
+
+    def __init__(self, stub):
+        super(AppShell, self).__init__()
+        self.stub = stub
+
+    def precmd(self, line):
+        return line.lower().strip()
+
+    def do_quit(self, _):
+        "Exits the application"
+        return True
+
+    def do_authors(self, _):
+        "Prints author and related information for this project"
+
+        authors = ["Aidan Lane", "Caitlin Crowley", "Steven Zenack"]
+        for author in sorted(authors):
+          print(author)
+
+    def do_joyride(self, line):
+        "Request a new JoyRide"
+        parser = argparse.ArgumentParser()
+        parser.add_argument("start", help="Starting location address", type=str)
+        parser.add_argument("end", help="End destination address", type=str)
+        parser.add_argument("time", help="Time in minutes the trip should last", type=str)
+
+        try:
+            args = parser.parse_args(line.split(" "))
+        except argparse.ArgumentError as e:
+            print(e.message, e.args)
+        except SystemExit:
+            return  # Stop rest of command but allow user to continue
+
+        response = get_joyride(self.stub, args.start, args.end, args.time)
+        print("Received:", response.message)
+
+
 def run(ip, port):
     """ Runs gRPC client
 
@@ -131,18 +174,27 @@ def run(ip, port):
     with grpc.insecure_channel("{}:{}".format(ip, port)) as channel:
         print("Connected to gRPC server {}:{}".format(ip, port))
         stub = joyride_pb2_grpc.JoyRideStub(channel)
-        response = get_joyride(stub, "10 King Street, Troy NY", "95 14th Street, Troy NY", 0)
-        
-    print("Received:", response.message)
+
+        shell = AppShell(stub)
+        while True:
+            try:
+                print()
+                shell.cmdloop()
+                break
+            except KeyboardInterrupt:
+                pass
 
 
 if __name__ == "__main__":
     logging.basicConfig()
 
-    if len(sys.argv) != 3:
-        print("Please specify a valid IP address and port")
-        sys.exit(0)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("ip", help="IP address to connect to", type=str)
+    parser.add_argument("port", help="gRPC server port", type=str)
 
-    ip = sys.argv[1]
-    port = sys.argv[2]
-    run(ip, port)
+    try:
+        args = parser.parse_args()
+    except argparse.ArgumentError as e:
+        print(e.message, e.args)
+
+    run(args.ip, args.port)
