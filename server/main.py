@@ -37,10 +37,33 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
 
         # Find shortest path weighted on pre-computed travel time
         #TODO(aidan) handle case where shortest path time is greater than requested time
-        route = nx.shortest_path(G, start_node, end_node, weight="travel_time")
+        _, route = nx.bidirectional_dijkstra(G, start_node, end_node, weight="travel_time")
+        last_name = None
+        last_bearing = None
 
-        return joyride_pb2.RideReply(message="{}, {}, {}".format(
-            request.start, request.end, request.time))
+        for i in range(0, len(route)):
+            if i == len(route) - 1:
+                yield joyride_pb2.RideReply(node=route[-1:], message="")
+                break
+            
+            edge = G.get_edge_data(route[i], route[i + 1])[0]
+            bearing = int(edge["bearing"])
+            street_name = edge["name"]
+            direction = cardinal_direction(bearing)
+
+            if not last_bearing:
+                turn = " "
+            else:
+                turn = bearing_turn(last_bearing, bearing)
+
+            if street_name == last_name:
+                continue
+
+            msg = "Turn{}on {} and head {}".format(turn, street_name, direction)
+            last_name = street_name
+            last_bearing = bearing
+
+            yield joyride_pb2.RideReply(node=route[i], message=msg)
 
 
 def serve(port, graph):
@@ -78,7 +101,7 @@ def load_data(address, r):
 
     """
     start_time = time.time()
-    G = ox.graph_from_address(address, dist=r, simplify=False, network_type="drive")
+    G = ox.graph_from_address(address, dist=r, network_type="drive", simplify=True)
     print("Finished loading graph in {:.4f} seconds.\n".format(time.time() - start_time))
 
     # Calculate travel time based on length, speed (km/h) for each edge
@@ -88,6 +111,31 @@ def load_data(address, r):
     print()
 
     return G
+
+
+def bearing_turn(b1, b2):
+  if ((((b1 - b2 + 540) % 360) - 180) > 0):
+    return " left "
+  else:
+    return " right "
+
+
+def cardinal_direction(b):
+    dirs = ["North", "North-East", "East", "South-East", "South", "South-West", "West", 
+        "North-West"]
+
+    degree = 337.5
+
+    for dir in dirs:
+        if b >= degree and b < degree + 45:
+            return dir
+
+        if degree + 45 >= 360:
+            degree = 22.5
+        else:
+            degree += 45
+    
+    return None
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ import cmd
 from concurrent import futures
 import logging
 import math
-import sys
+import shlex
 
 import grpc
 import networkx as nx
@@ -116,8 +116,22 @@ def get_joyride(stub, start, end, time):
     with futures.ThreadPoolExecutor() as executor:
         future = executor.submit(load_subsection, start, end)
 
-        response = stub.GetJoyRide(joyride_pb2.RideRequest(start=start, end=end, time=time))
+        # Stream nodes from stub and calculate path
+        nodes = []
+        directions = []
+
+        stream = stub.GetJoyRide(joyride_pb2.RideRequest(start=start, end=end, time=time))
+        for response in stream:
+            if response == grpc.aio.EOF:
+                break
+
+            nodes.append(response.node)
+            directions.append(response.message)
+            print(response.message)
+
         G = future.result()
+        fig, ax = ox.plot_graph_route(G, nodes)
+        fig.savefig("test.png")
     
     return response
 
@@ -149,10 +163,10 @@ class AppShell(cmd.Cmd):
         parser = argparse.ArgumentParser()
         parser.add_argument("start", help="Starting location address", type=str)
         parser.add_argument("end", help="End destination address", type=str)
-        parser.add_argument("time", help="Time in minutes the trip should last", type=str)
+        parser.add_argument("time", help="Time in minutes the trip should last", type=int)
 
         try:
-            args = parser.parse_args(line.split(" "))
+            args = parser.parse_args(shlex.split(line))
         except argparse.ArgumentError as e:
             print(e.message, e.args)
         except SystemExit:

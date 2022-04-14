@@ -10,7 +10,7 @@ package joyride;
 // The greeting service definition.
 service JoyRide {
   // Sends a greeting
-  rpc GetJoyRide (RideRequest) returns (RideReply) {}
+  rpc GetJoyRide (RideRequest) returns (stream RideReply) {}
 }
 
 // The request message containing the user's name.
@@ -22,5 +22,6 @@ message RideRequest {
 
 // The response message containing the greetings
 message RideReply {
-  string message = 1;
+  int32 node = 1;
+  string message = 2;
 }

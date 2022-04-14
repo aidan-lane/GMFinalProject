@@ -15,7 +15,7 @@ class JoyRideStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.GetJoyRide = channel.unary_unary(
+        self.GetJoyRide = channel.unary_stream(
                 '/joyride.JoyRide/GetJoyRide',
                 request_serializer=joyride__pb2.RideRequest.SerializeToString,
                 response_deserializer=joyride__pb2.RideReply.FromString,
@@ -36,7 +36,7 @@ class JoyRideServicer(object):
 
 def add_JoyRideServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'GetJoyRide': grpc.unary_unary_rpc_method_handler(
+            'GetJoyRide': grpc.unary_stream_rpc_method_handler(
                     servicer.GetJoyRide,
                     request_deserializer=joyride__pb2.RideRequest.FromString,
                     response_serializer=joyride__pb2.RideReply.SerializeToString,
@@ -63,7 +63,7 @@ class JoyRide(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/joyride.JoyRide/GetJoyRide',
+        return grpc.experimental.unary_stream(request, target, '/joyride.JoyRide/GetJoyRide',
             joyride__pb2.RideRequest.SerializeToString,
             joyride__pb2.RideReply.FromString,
             options, channel_credentials,
