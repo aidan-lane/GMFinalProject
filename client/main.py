@@ -84,13 +84,11 @@ def load_subsection(start, end):
     # This is accomplished by first finding the center point. Next, a distance is
     # calcuated so that both points fit within the bounding box with some additional
     # margin space.
-    margin_scale = 0.05
+    margin_scale = 0.1
     dis = get_distance(c1, c2)*1000  # Convert km to m
     dis = dis/2 + dis*margin_scale
 
-    G = ox.graph_from_point(get_center([c1, c2]), dist=dis, network_type="drive")
-    G = ox.add_edge_speeds(G)
-    G = ox.add_edge_travel_times(G)
+    G = ox.graph_from_point(get_center([c1, c2]), dist=dis, network_type="drive", simplify=False)
 
     return G
 
@@ -126,12 +124,15 @@ def get_joyride(stub, start, end, time):
                 break
 
             nodes.append(response.node)
-            directions.append(response.message)
-            print(response.message)
+            if response.message != "":
+                directions.append(response.message)
+                print(response.message)
 
         G = future.result()
-        fig, ax = ox.plot_graph_route(G, nodes)
-        fig.savefig("test.png")
+
+        fig, _ = ox.plot_graph_route(G, nodes, route_color="b", route_linewidth=5, 
+            route_alpha=0.75, node_size=0, show=False)
+        fig.savefig("route.png")
     
     return response
 
@@ -172,8 +173,7 @@ class AppShell(cmd.Cmd):
         except SystemExit:
             return  # Stop rest of command but allow user to continue
 
-        response = get_joyride(self.stub, args.start, args.end, args.time)
-        print("Received:", response.message)
+        get_joyride(self.stub, args.start, args.end, args.time)
 
 
 def run(ip, port):

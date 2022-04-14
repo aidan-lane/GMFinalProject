@@ -22,6 +22,6 @@ message RideRequest {
 
 // The response message containing the greetings
 message RideReply {
-  int32 node = 1;
+  int64 node = 1;
   string message = 2;
 }

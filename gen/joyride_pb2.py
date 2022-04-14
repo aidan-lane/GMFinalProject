@@ -14,7 +14,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\rjoyride.proto\x12\x07joyride\"7\n\x0bRideRequest\x12\r\n\x05start\x18\x01 \x01(\t\x12\x0b\n\x03\x65nd\x18\x02 \x01(\t\x12\x0c\n\x04time\x18\x03 \x01(\x05\"*\n\tRideReply\x12\x0c\n\x04node\x18\x01 \x01(\x05\x12\x0f\n\x07message\x18\x02 \x01(\t2E\n\x07JoyRide\x12:\n\nGetJoyRide\x12\x14.joyride.RideRequest\x1a\x12.joyride.RideReply\"\x00\x30\x01\x42\x30\n\x18io.grpc.examples.joyrideB\x0cJoyrideProtoP\x01\xa2\x02\x03HLWb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\rjoyride.proto\x12\x07joyride\"7\n\x0bRideRequest\x12\r\n\x05start\x18\x01 \x01(\t\x12\x0b\n\x03\x65nd\x18\x02 \x01(\t\x12\x0c\n\x04time\x18\x03 \x01(\x05\"*\n\tRideReply\x12\x0c\n\x04node\x18\x01 \x01(\x03\x12\x0f\n\x07message\x18\x02 \x01(\t2E\n\x07JoyRide\x12:\n\nGetJoyRide\x12\x14.joyride.RideRequest\x1a\x12.joyride.RideReply\"\x00\x30\x01\x42\x30\n\x18io.grpc.examples.joyrideB\x0cJoyrideProtoP\x01\xa2\x02\x03HLWb\x06proto3')
 
 
 

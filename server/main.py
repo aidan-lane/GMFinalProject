@@ -1,7 +1,6 @@
 import argparse
 from concurrent import futures
 import logging
-import sys
 import time
 
 from decouple import config
@@ -14,7 +13,7 @@ from gen import joyride_pb2_grpc
 
 
 # Osmnx config options
-ox.config(use_cache=True, log_console=True)
+ox.config(use_cache=True, log_console=False)
 
 
 class Joyride(joyride_pb2_grpc.JoyRideServicer):
@@ -25,6 +24,8 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
         self.G = graph
 
     def GetJoyRide(self, request, context):
+        print("Getting Joyride between {} and {}.".format(request.start, request.end))
+
         # Get latitude, longitude of the start and end points
         start = ox.geocode(request.start)
         end = ox.geocode(request.end)
@@ -37,14 +38,14 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
 
         # Find shortest path weighted on pre-computed travel time
         #TODO(aidan) handle case where shortest path time is greater than requested time
-        _, route = nx.bidirectional_dijkstra(G, start_node, end_node, weight="travel_time")
+        length, route = nx.bidirectional_dijkstra(G, start_node, end_node, weight="travel_time")
         last_name = None
         last_bearing = None
 
         for i in range(0, len(route)):
             if i == len(route) - 1:
-                yield joyride_pb2.RideReply(node=route[-1:], message="")
-                break
+                yield joyride_pb2.RideReply(node=route[-1], message="")
+                continue
             
             edge = G.get_edge_data(route[i], route[i + 1])[0]
             bearing = int(edge["bearing"])
@@ -57,6 +58,7 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
                 turn = bearing_turn(last_bearing, bearing)
 
             if street_name == last_name:
+                yield joyride_pb2.RideReply(node=route[i], message="")
                 continue
 
             msg = "Turn{}on {} and head {}".format(turn, street_name, direction)
@@ -101,8 +103,8 @@ def load_data(address, r):
 
     """
     start_time = time.time()
-    G = ox.graph_from_address(address, dist=r, network_type="drive", simplify=True)
-    print("Finished loading graph in {:.4f} seconds.\n".format(time.time() - start_time))
+    G = ox.graph_from_address(address, dist=r, network_type="drive", simplify=False)
+    print("Finished loading graph in {:.4f} seconds.".format(time.time() - start_time))
 
     # Calculate travel time based on length, speed (km/h) for each edge
     G = ox.add_edge_speeds(G)
