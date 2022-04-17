@@ -1,5 +1,3 @@
-from __future__ import print_function
-
 import argparse
 import cmd
 from concurrent import futures
@@ -17,6 +15,12 @@ from gen import joyride_pb2_grpc
 
 def get_center(coords):
     """ Gets the center coordinate (lat, lng) of a list of coordinate tuples.
+
+    Args:
+        coords: list of coordinate tuples
+
+    Returns:
+        Coordinate tuple of center point
     """
     n = len(coords)
     if n == 1:
@@ -44,6 +48,13 @@ def get_center(coords):
 
 def get_distance(c1, c2):
     """ Returns approximate distance between two pairs of coordinates in km.
+
+    Args:
+        c1: coordinate pair 1
+        c2: coordinate pair 2
+
+    Returns:
+        distance in km between c1 and c2
     """
     # approximate radius of earth in km
     R = 6373.0

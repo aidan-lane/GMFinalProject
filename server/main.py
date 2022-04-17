@@ -7,6 +7,7 @@ from decouple import config
 import grpc
 import networkx as nx
 import osmnx as ox
+import psycopg2
 
 from gen import joyride_pb2
 from gen import joyride_pb2_grpc
@@ -15,6 +16,24 @@ from gen import joyride_pb2_grpc
 # Osmnx config options
 ox.config(use_cache=True, log_console=False)
 
+conn = psycopg2.connect(user=config("POSTGRES_USER"),
+                              password=config("POSTGRES_PASSWORD"),
+                              host=config("POSTGRES_HOST"),
+                              port="5432",
+                              database=config("POSTGRES_DB"))
+cursor = conn.cursor()
+
+add_node_query = """
+    INSERT INTO personalization (node, interest)
+    VALUES (%s, %s)
+    ON CONFLICT (node)
+    DO UPDATE SET interest = EXCLUDED.interest + 1;
+"""
+
+get_nodes_query = """
+    SELECT * FROM personalization;
+"""
+
 
 class Joyride(joyride_pb2_grpc.JoyRideServicer):
     """ Servicer for the JoyRide gRPC service.
@@ -22,6 +41,7 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
 
     def __init__(self, graph):
         self.G = graph
+        self.P = dict()  # Personalization dictionary for page-rank
 
     def GetJoyRide(self, request, context):
         print("Getting Joyride between {} and {}.".format(request.start, request.end))
@@ -36,12 +56,17 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
         start_node = ox.nearest_nodes(self.G, startx, starty)
         end_node = ox.nearest_nodes(self.G, endx, endy)
 
+        # Add start and end node data point to database (Point-of-interest)
+        cursor.executemany(add_node_query, [(start_node, 1), (end_node, 1)])
+        conn.commit()
+
         # Find shortest path weighted on pre-computed travel time
         #TODO(aidan) handle case where shortest path time is greater than requested time
         length, route = nx.bidirectional_dijkstra(G, start_node, end_node, weight="travel_time")
         last_name = None
         last_bearing = None
 
+        # Generate directions and node data and yield to gRPC client
         for i in range(0, len(route)):
             if i == len(route) - 1:
                 yield joyride_pb2.RideReply(node=route[-1], message="")
@@ -98,7 +123,7 @@ def load_data(address, r):
         address: central point of graph
         r: radius in meters around address to be loaded
 
-    Returns
+    Returns:
         NetworkX.MultiDiGraph
 
     """
@@ -116,13 +141,35 @@ def load_data(address, r):
 
 
 def bearing_turn(b1, b2):
-  if ((((b1 - b2 + 540) % 360) - 180) > 0):
-    return " left "
-  else:
-    return " right "
+    """ Calculates turn direction between two bearings
+
+    Bearings represents degrees on a compass (0-359). In order to determine if a turn is
+    left or right, the angle between b1 and b2 is calculated to determine the direction.
+
+    Args:
+        b1: bearing 1
+        b2: bearing 2
+
+    Returns:
+        A string, ' left ' or ' right '
+    """
+    if ((((b1 - b2 + 540) % 360) - 180) > 0):
+      return " left "
+    else:
+      return " right "
 
 
 def cardinal_direction(b):
+    """ Calculate the cardinal direction for a given bearing.
+
+    Ex: 0 is 'North
+
+    Args:
+        b: bearing (in degrees)
+
+    Returns:
+        A string representing cardinal direction
+    """
     dirs = ["North", "North-East", "East", "South-East", "South", "South-West", "West", 
         "North-West"]
 
