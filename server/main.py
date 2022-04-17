@@ -35,12 +35,23 @@ get_nodes_query = """
     SELECT * FROM personalization;
 """
 
+###########
+# Helpers #
+###########
+
 def add_node_interest(batch, P):
     """ Helper function to add a batch of (node, interest) rows to dictionary
         for page-rank.
     """
     for row in batch:
         P[row[0]] = row[1]
+
+def incr_dict(map, key):
+    """ Helper to increment a node's interest value in a dictionary
+    """
+    if key not in map:
+        map[key] = 0
+    map[key] += 1
 
 
 class Joyride(joyride_pb2_grpc.JoyRideServicer):
@@ -49,6 +60,10 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
 
     def __init__(self, graph, P):
         self.G = graph
+        # P is a personalization dictionary for augmenting our page-rank algorithm.
+        # When a user queries for a destination, the node's interest score is incremented
+        # and saved to the database. It is not guaranteed that the dictionary will be
+        # completely loaded once queries can be received for the sake of time.
         self.P = P
 
     def GetJoyRide(self, request, context):
@@ -67,6 +82,8 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
         # Add start and end node data point to database (Point-of-interest)
         cursor.executemany(add_node_query, [(start_node, 1), (end_node, 1)])
         conn.commit()
+        incr_dict(self.P, start_node)
+        incr_dict(self.P, end_node)
 
         # Find shortest path weighted on pre-computed travel time
         #TODO(aidan) handle case where shortest path time is greater than requested time
@@ -134,6 +151,7 @@ def serve(port, graph):
     server.start()
     print("Started server on port {}".format(port))
     server.wait_for_termination()
+    conn.close()
 
 
 def load_data(address, r):
