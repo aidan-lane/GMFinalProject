@@ -1,5 +1,6 @@
 import argparse
 from concurrent import futures
+from multiprocessing import Manager
 import logging
 import time
 
@@ -34,14 +35,21 @@ get_nodes_query = """
     SELECT * FROM personalization;
 """
 
+def add_node_interest(batch, P):
+    """ Helper function to add a batch of (node, interest) rows to dictionary
+        for page-rank.
+    """
+    for row in batch:
+        P[row[0]] = row[1]
+
 
 class Joyride(joyride_pb2_grpc.JoyRideServicer):
     """ Servicer for the JoyRide gRPC service.
     """
 
-    def __init__(self, graph):
+    def __init__(self, graph, P):
         self.G = graph
-        self.P = dict()  # Personalization dictionary for page-rank
+        self.P = P
 
     def GetJoyRide(self, request, context):
         print("Getting Joyride between {} and {}.".format(request.start, request.end))
@@ -103,8 +111,24 @@ def serve(port, graph):
         port: port number as string
         graph: MultiDigraph to be queried by this service
     """
+
+    P = Manager().dict()  # Personalization dictionary for page-rank
+    max_workers = 20
+    batch_size = 1000
+
+    # Load personalization table into in-memory dictionary.
+    # We can do this in parallel as the key, a node is guaranteed to be unique
+    # by the table scheme (i.e. is a primary key).
+    with futures.ProcessPoolExecutor(max_workers) as executor:
+        cursor.execute(get_nodes_query)
+        while True:
+            rows = cursor.fetchmany(batch_size)
+            if not rows:
+                break
+            executor.submit(add_node_interest, rows, P)
+
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    joyride_pb2_grpc.add_JoyRideServicer_to_server(Joyride(graph), server)
+    joyride_pb2_grpc.add_JoyRideServicer_to_server(Joyride(graph, P), server)
     server.add_insecure_port("[::]:{}".format(port))
 
     server.start()
