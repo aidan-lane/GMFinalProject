@@ -15,7 +15,7 @@ from gen import joyride_pb2_grpc
 
 
 # Osmnx config options
-ox.config(use_cache=True, log_console=False)
+ox.config(use_cache=True, log_console=True)
 
 conn = psycopg2.connect(user=config("POSTGRES_USER"),
                               password=config("POSTGRES_PASSWORD"),
@@ -25,10 +25,17 @@ conn = psycopg2.connect(user=config("POSTGRES_USER"),
 cursor = conn.cursor()
 
 add_node_query = """
-    INSERT INTO personalization (node, interest)
-    VALUES (%s, %s)
+    INSERT INTO personalization (node, interest, rating)
+    VALUES (%s, %s, %s)
     ON CONFLICT (node)
     DO UPDATE SET interest = EXCLUDED.interest + 1;
+"""
+
+add_rating_query = """
+    INSERT INTO personalization (node, interest, rating)
+    VALUES (%s, %s, %s)
+    ON CONFLICT (node)
+    DO UPDATE SET rating = EXCLUDED.rating + 1;
 """
 
 get_nodes_query = """
@@ -58,13 +65,14 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
     """ Servicer for the JoyRide gRPC service.
     """
 
-    def __init__(self, graph, P):
+    def __init__(self, graph, P, R):
         self.G = graph
         # P is a personalization dictionary for augmenting our page-rank algorithm.
         # When a user queries for a destination, the node's interest score is incremented
         # and saved to the database. It is not guaranteed that the dictionary will be
         # completely loaded once queries can be received for the sake of time.
         self.P = P
+        self.R = R
 
     def GetJoyRide(self, request, context):
         print("Getting Joyride between {} and {}.".format(request.start, request.end))
@@ -80,18 +88,17 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
         end_node = ox.nearest_nodes(self.G, endx, endy)
 
         # Add start and end node data point to database (Point-of-interest)
-        cursor.executemany(add_node_query, [(start_node, 1), (end_node, 1)])
+        cursor.executemany(add_node_query, [(start_node, 1, 0), (end_node, 1, 0)])
         conn.commit()
         incr_dict(self.P, start_node)
         incr_dict(self.P, end_node)
 
         # Find shortest path weighted on pre-computed travel time
-        #TODO(aidan) handle case where shortest path time is greater than requested time
         length, route = nx.bidirectional_dijkstra(G, start_node, end_node, weight="travel_time")
-        last_name = None
-        last_bearing = None
+        routes = list(nx.all_simple_paths(G, start_node, end_node, cutoff=100))
 
-        # Generate directions and node data and yield to gRPC client
+        last_name = None
+        last_bearing = None        # Generate directions and node data and yield to gRPC client
         for i in range(0, len(route)):
             if i == len(route) - 1:
                 yield joyride_pb2.RideReply(node=route[-1], message="")
@@ -116,6 +123,8 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
             last_bearing = bearing
 
             yield joyride_pb2.RideReply(node=route[i], message=msg)
+    
+    #def UpdateRating()
 
 
 def serve(port, graph):
@@ -138,14 +147,22 @@ def serve(port, graph):
     # by the table scheme (i.e. is a primary key).
     with futures.ProcessPoolExecutor(max_workers) as executor:
         cursor.execute(get_nodes_query)
+        tasks = []
         while True:
             rows = cursor.fetchmany(batch_size)
             if not rows:
                 break
-            executor.submit(add_node_interest, rows, P)
+            tasks.append(executor.submit(add_node_interest, rows, P))
+        
+        for t in tasks:
+            t.result()
+
+    # Do page-rank
+    ranks = nx.pagerank(graph)
+    print("Completed Page-Rank")
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    joyride_pb2_grpc.add_JoyRideServicer_to_server(Joyride(graph, P), server)
+    joyride_pb2_grpc.add_JoyRideServicer_to_server(Joyride(graph, P, ranks), server)
     server.add_insecure_port("[::]:{}".format(port))
 
     server.start()
