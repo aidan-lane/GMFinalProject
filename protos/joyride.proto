@@ -11,6 +11,7 @@ package joyride;
 service JoyRide {
   // Sends a greeting
   rpc GetJoyRide (RideRequest) returns (stream RideReply) {}
+  rpc GetRideRating (RideRating) returns (Null) {}
 }
 
 // The request message containing the user's name.
@@ -25,3 +26,11 @@ message RideReply {
   int64 node = 1;
   string message = 2;
 }
+
+// The rating request
+message RideRating {
+  int64 rating = 1;
+  repeated int64 data = 2;
+}
+
+message Null {}

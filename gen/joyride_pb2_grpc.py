@@ -20,6 +20,11 @@ class JoyRideStub(object):
                 request_serializer=joyride__pb2.RideRequest.SerializeToString,
                 response_deserializer=joyride__pb2.RideReply.FromString,
                 )
+        self.GetRideRating = channel.unary_unary(
+                '/joyride.JoyRide/GetRideRating',
+                request_serializer=joyride__pb2.RideRating.SerializeToString,
+                response_deserializer=joyride__pb2.Null.FromString,
+                )
 
 
 class JoyRideServicer(object):
@@ -33,6 +38,12 @@ class JoyRideServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetRideRating(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_JoyRideServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -40,6 +51,11 @@ def add_JoyRideServicer_to_server(servicer, server):
                     servicer.GetJoyRide,
                     request_deserializer=joyride__pb2.RideRequest.FromString,
                     response_serializer=joyride__pb2.RideReply.SerializeToString,
+            ),
+            'GetRideRating': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetRideRating,
+                    request_deserializer=joyride__pb2.RideRating.FromString,
+                    response_serializer=joyride__pb2.Null.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -66,5 +82,22 @@ class JoyRide(object):
         return grpc.experimental.unary_stream(request, target, '/joyride.JoyRide/GetJoyRide',
             joyride__pb2.RideRequest.SerializeToString,
             joyride__pb2.RideReply.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def GetRideRating(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/joyride.JoyRide/GetRideRating',
+            joyride__pb2.RideRating.SerializeToString,
+            joyride__pb2.Null.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

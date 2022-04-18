@@ -78,7 +78,7 @@ def load_subsection(start, end):
     """ Loads subsection of roadnetwork graph
 
     To save computation time when rendering the map for the user, we calculate a
-    subsection of the graph base don the center point of the two addresses.
+    subsection of the graph based on the center point of the two addresses.
 
     Args:
         start: Start address string
@@ -147,6 +147,10 @@ def get_joyride(stub, start, end, time):
     
     return response
 
+def update_ratings(stub, rating, path):
+    joyride_pb2.RideRating(rating=rating, data = path)
+    print("Rating saved! Thanks for your feedback")
+
 
 class AppShell(cmd.Cmd):
     prompt = ">>> "
@@ -166,7 +170,7 @@ class AppShell(cmd.Cmd):
     def do_authors(self, _):
         "Prints author and related information for this project"
 
-        authors = ["Aidan Lane", "Caitlin Crowley", "Steven Zenack"]
+        authors = ["Aidan Lane", "Caitlin Crowley","Stephen Zenack"]
         for author in sorted(authors):
           print(author)
 
@@ -185,6 +189,11 @@ class AppShell(cmd.Cmd):
             return  # Stop rest of command but allow user to continue
 
         get_joyride(self.stub, args.start, args.end, args.time)
+
+        # Get user rating for the ride
+        print("How did you feel about your joyride? ")
+        rating = input("Rating: ")
+
 
 
 def run(ip, port):
