@@ -9,13 +9,14 @@ import grpc
 import networkx as nx
 import osmnx as ox
 import psycopg2
+import copy
 
 from gen import joyride_pb2
 from gen import joyride_pb2_grpc
 
 
 # Osmnx config options
-ox.config(use_cache=True, log_console=True)
+ox.config(use_cache=True, log_console=False)
 
 conn = psycopg2.connect(user=config("POSTGRES_USER"),
                               password=config("POSTGRES_PASSWORD"),
@@ -94,11 +95,74 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
         incr_dict(self.P, end_node)
 
         # Find shortest path weighted on pre-computed travel time
-        length, route = nx.bidirectional_dijkstra(G, start_node, end_node, weight="travel_time")
-        routes = list(nx.all_simple_paths(G, start_node, end_node, cutoff=100))
+        time, route = nx.bidirectional_dijkstra(G, start_node, end_node, weight="travel_time")
+        #routes = list(nx.all_simple_paths(G, start_node, end_node, cutoff=100))
 
+        # Starting the ANAL
+        print("Current Route:", route)
+
+        removed_nodes = []
+        removed_edges = []
+        final_node = route[-1]
+        test_time = time
+
+        current_route = route
+
+        while(test_time < 300):
+            
+            test_route = []
+            print("Current Route: ", current_route)
+            print()
+            for i in range(len(current_route)-2, 2, -2):
+                new_route_found = False
+                # Preserve nodes/edges were about to remove
+
+                left = current_route[i-1]
+                curr = current_route[i]
+                right = current_route[i+1]
+                
+                removed_node = copy.deepcopy(current_route[i])
+                removed_edge = copy.deepcopy(G.edges(current_route[i],data=True))
+                print("i:",i, current_route[i])
+
+                
+
+                t_left = G.get_edge_data(left,curr)
+                t_right = G.get_edge_data(curr,right)
+
+                print("Left node: ", t_left, "Current node: ", curr, "Right node: ", t_right) 
+
+                test_time -= (t_left[0]["travel_time"] + t_right[0]["travel_time"])
+
+                G.remove_node(removed_node)
+                try:
+                    new_time,new_route = nx.bidirectional_dijkstra(G, left, final_node, weight="travel_time")
+                    new_route_found = True
+                    print("New time: ", new_time + test_time)
+                    print("new route:" , new_route)
+                    print()
+                except:
+                    new_route_found = False
+                    #print("Error finding path from",route[i-1],"to",final_node,"continuing...")
+
+
+                if new_route_found:
+                    removed_nodes.append(removed_node)
+                    removed_edges + list(removed_edge)
+                    final_node = new_route[0]
+                    test_time+=new_time
+                    test_route = new_route[1:] + test_route
+                else:
+                    G.add_node(removed_node)
+                    G.add_edges_from(removed_edge)
+                    test_route = [curr,right] + test_route
+            current_route = test_route
+            G.add_nodes_from(removed_nodes)
+            G.add_edges_from(removed_edges)
+
+        # Generate directions and node data and yield to gRPC client
         last_name = None
-        last_bearing = None        # Generate directions and node data and yield to gRPC client
+        last_bearing = None        
         for i in range(0, len(route)):
             if i == len(route) - 1:
                 yield joyride_pb2.RideReply(node=route[-1], message="")
