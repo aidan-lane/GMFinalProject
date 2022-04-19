@@ -103,9 +103,10 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
         current_time = total_time
         
         
-        time_margin = target_time * 0.10
+        time_margin = target_time * 0.05
         step = 0
         eps = 100
+        print("wtf")
 
         while current_time < target_time - time_margin and step < eps:
             next_route = []
@@ -154,11 +155,9 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
                     if not next_route:
                         next_route.append(last_node)
                     last_node = right_node
-                    i+=1
             route = next_route
             step += 1
             print("Current Time:",current_time)
-        sys.exit()
             
                 
         # Generate directions and node data and yield to gRPC client

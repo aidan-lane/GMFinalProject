@@ -99,7 +99,7 @@ def load_subsection(start, end):
     dis = get_distance(c1, c2)*1000  # Convert km to m
     dis = dis/2 + dis*margin_scale
 
-    G = ox.graph_from_point(get_center([c1, c2]), dist=dis, network_type="drive", simplify=False)
+    G = ox.graph_from_point(get_center([c1, c2]), dist=dis, network_type="drive", simplify=True)
 
     return G
 
