@@ -141,9 +141,9 @@ def get_joyride(stub, start, end, time):
 
         G = future.result()
 
-        fig, _ = ox.plot_graph_route(G, nodes, route_color="b", route_linewidth=5, 
-            route_alpha=0.75, node_size=0, show=False)
-        fig.savefig("route.png")
+        # fig, _ = ox.plot_graph_route(G, nodes, route_color="b", route_linewidth=5, 
+        #     route_alpha=0.75, node_size=0, show=False)
+        #fig.savefig("route.png")
     
     return response
 
@@ -193,7 +193,6 @@ class AppShell(cmd.Cmd):
         # Get user rating for the ride
         print("How did you feel about your joyride? ")
         rating = input("Rating: ")
-
 
 
 def run(ip, port):

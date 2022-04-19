@@ -102,22 +102,22 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
         target_time = request.time
         current_time = total_time
         
-        
         time_margin = target_time * 0.05
         step = 0
         eps = 100
-        print("wtf")
 
         while current_time < target_time - time_margin and step < eps:
             next_route = []
             last_node = start_node
-            for i in range(1, len(route) - 1,2):
+            for i in range(1, len(route) - 1, 2):
                 if current_time >= target_time - time_margin:
                     break
 
                 node = route[i]
                 node_attrib = G.nodes[node]
-                edges = list(G.edges(node, data=True))
+                edges = []
+                edges.extend(list(G.in_edges(node, data=True)))
+                edges.extend(list(G.out_edges(node, data=True)))
 
                 left_node = route[i - 1]
                 right_node = route[i + 1]
@@ -137,7 +137,7 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
                 G.add_nodes_from([(node, node_attrib)])
                 G.add_edges_from(edges)
 
-                if found_path and len(new_route) > 2 and new_time + current_time < target_time + time_margin:
+                if found_path and len(new_route) > 3 and new_time + current_time < target_time + time_margin:
                     last_node = new_route[-1]
 
                     if not left_edge:
@@ -151,14 +151,13 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
                     current_time += new_time
                     next_route.extend(new_route[:-1])
                 else:
-                    next_route.append(left_node)
+                    next_route.extend([left_node, node])
                     if not next_route:
                         next_route.append(last_node)
                     last_node = right_node
             route = next_route
             step += 1
-            print("Current Time:",current_time)
-            
+            print("Current Time:", current_time)
                 
         # Generate directions and node data and yield to gRPC client
         last_name = None
@@ -170,7 +169,9 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
             
             edge = G.get_edge_data(route[i], route[i + 1])[0]
             bearing = int(edge["bearing"])
-            street_name = edge["name"]
+            street_name = ""
+            if "name" in edge:
+                street_name = edge["name"]
             direction = cardinal_direction(bearing)
 
             if not last_bearing:
