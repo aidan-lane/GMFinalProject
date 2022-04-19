@@ -3,6 +3,7 @@ from concurrent import futures
 from multiprocessing import Manager
 import logging
 import time
+import sys
 
 from decouple import config
 import grpc
@@ -13,9 +14,11 @@ import psycopg2
 from gen import joyride_pb2
 from gen import joyride_pb2_grpc
 
+from networkx import NetworkXNoPath
+
 
 # Osmnx config options
-ox.config(use_cache=True, log_console=True)
+ox.config(use_cache=True, log_console=False)
 
 conn = psycopg2.connect(user=config("POSTGRES_USER"),
                               password=config("POSTGRES_PASSWORD"),
@@ -94,9 +97,71 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
         incr_dict(self.P, end_node)
 
         # Find shortest path weighted on pre-computed travel time
-        length, route = nx.bidirectional_dijkstra(G, start_node, end_node, weight="travel_time")
-        routes = list(nx.all_simple_paths(G, start_node, end_node, cutoff=100))
+        total_time, route = nx.bidirectional_dijkstra(G, start_node, end_node, weight="travel_time")
 
+        target_time = request.time
+        current_time = total_time
+        
+        
+        time_margin = target_time * 0.10
+        step = 0
+        eps = 100
+
+        while current_time < target_time - time_margin and step < eps:
+            next_route = []
+            last_node = start_node
+            for i in range(1, len(route) - 1,2):
+                if current_time >= target_time - time_margin:
+                    break
+
+                node = route[i]
+                node_attrib = G.nodes[node]
+                edges = list(G.edges(node, data=True))
+
+                left_node = route[i - 1]
+                right_node = route[i + 1]
+                if(left_node == right_node):
+                    continue
+                left_edge = G.get_edge_data(last_node, node)
+                right_edge = G.get_edge_data(node, right_node)
+
+                G.remove_node(node)
+                found_path = True
+
+                try:
+                    new_time, new_route = nx.bidirectional_dijkstra(G, last_node, right_node, weight="travel_time")
+                except NetworkXNoPath:
+                    found_path = False
+
+                G.add_nodes_from([(node, node_attrib)])
+                G.add_edges_from(edges)
+
+                if found_path and len(new_route) > 2 and new_time + current_time < target_time + time_margin:
+                    last_node = new_route[-1]
+
+                    if not left_edge:
+                        pass
+                    else:
+                        current_time -= left_edge[0]["travel_time"]
+                    if not right_edge:
+                        pass
+                    else:
+                        current_time -= right_edge[0]["travel_time"]
+                    current_time += new_time
+                    next_route.extend(new_route[:-1])
+                else:
+                    next_route.append(left_node)
+                    if not next_route:
+                        next_route.append(last_node)
+                    last_node = right_node
+                    i+=1
+            route = next_route
+            step += 1
+            print("Current Time:",current_time)
+        sys.exit()
+            
+                
+        # Generate directions and node data and yield to gRPC client
         last_name = None
         last_bearing = None        # Generate directions and node data and yield to gRPC client
         for i in range(0, len(route)):
@@ -187,7 +252,7 @@ def load_data(address, r):
 
     """
     start_time = time.time()
-    G = ox.graph_from_address(address, dist=r, network_type="drive", simplify=False)
+    G = ox.graph_from_address(address, dist=r, network_type="drive", simplify=True)
     print("Finished loading graph in {:.4f} seconds.".format(time.time() - start_time))
 
     # Calculate travel time based on length, speed (km/h) for each edge
