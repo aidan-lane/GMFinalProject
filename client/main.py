@@ -139,16 +139,28 @@ def get_joyride(stub, start, end, time):
                 directions.append(response.message)
                 print(response.message)
 
-        G = future.result()
+        _ = future.result()
 
-        # fig, _ = ox.plot_graph_route(G, nodes, route_color="b", route_linewidth=5, 
-        #     route_alpha=0.75, node_size=0, show=False)
-        #fig.savefig("route.png")
-    
-    return response
+    return nodes
 
-def update_ratings(stub, rating, path):
-    joyride_pb2.RideRating(rating=rating, data = path)
+def update_ratings(stub, path):
+    print("How did you feel about your joyride? Enter a rating between 1-10")
+    rating = -1
+    while True:
+        rating = int(input("Rating: "))
+
+        if rating in range(1,3):
+            final_rating = 0
+        elif rating in range(3,6):
+            final_rating = 1
+        elif rating in range(6,11):
+            final_rating = 2
+        else:
+            print("Invalid rating entered...")
+            continue
+        break
+
+    stub.GetRideRating(joyride_pb2.RideRating(rating=final_rating, path=path))
     print("Rating saved! Thanks for your feedback")
 
 
@@ -188,11 +200,10 @@ class AppShell(cmd.Cmd):
         except SystemExit:
             return  # Stop rest of command but allow user to continue
 
-        get_joyride(self.stub, args.start, args.end, args.time)
+        nodes = get_joyride(self.stub, args.start, args.end, args.time * 60)
 
         # Get user rating for the ride
-        print("How did you feel about your joyride? ")
-        rating = input("Rating: ")
+        update_ratings(self.stub, nodes)
 
 
 def run(ip, port):
