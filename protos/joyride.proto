@@ -30,7 +30,7 @@ message RideReply {
 // The rating request
 message RideRating {
   int64 rating = 1;
-  repeated int64 data = 2;
+  repeated int64 path = 2;
 }
 
 message Null {}
