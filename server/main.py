@@ -1,14 +1,19 @@
 import argparse
 from concurrent import futures
 from multiprocessing import Manager
+import threading
 import logging
+import math
 import time
 
 from decouple import config
 import grpc
 import networkx as nx
 import osmnx as ox
+from osmnx import plot
 import psycopg2
+import matplotlib.cm as cm
+import matplotlib.pyplot as plt
 
 from gen import joyride_pb2
 from gen import joyride_pb2_grpc
@@ -42,6 +47,25 @@ get_nodes_query = """
 # Helpers #
 ###########
 
+def generate_heatmap(G, ranks):
+    map_name = "RdYlGn"
+    nx.set_node_attributes(G, ranks, "rank")
+    nc = plot.get_node_colors_by_attr(G, "rank", num_bins=20, cmap=map_name)
+    ns = 50
+
+    fig, ax = ox.plot_graph(G, node_color=nc, node_size=ns, edge_linewidth=1.5, 
+        figsize=(13, 13), bgcolor="white", show=False)
+
+    cmap = plt.cm.get_cmap(map_name)
+    norm=plt.Normalize(vmin=min(ranks.values()), vmax=max(ranks.values()))
+    cb = fig.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, orientation="horizontal", pad=0.05)
+    cb.set_label("PageRank", fontsize=20)
+
+    file = "heatmap.png"
+    fig.savefig(file)
+    print("Saved pagerank heatmap:", file)
+
+
 def add_node_interest(batch, P, G):
     """ Helper function to add a batch of (node, interest) rows to dictionary
         for page-rank.
@@ -57,6 +81,114 @@ def incr_dict(map, key, amount=1):
     if key not in map:
         map[key] = 0
     map[key] += amount
+
+
+def get_center(coords):
+    """ Gets the center coordinate (lat, lng) of a list of coordinate tuples.
+
+    Args:
+        coords: list of coordinate tuples
+
+    Returns:
+        Coordinate tuple of center point
+    """
+    n = len(coords)
+    if n == 1:
+        return coords[0]
+    
+    x, y, z = 0, 0, 0
+
+    for c in coords:
+        lat = c[0] * math.pi / 180
+        lng = c[1] * math.pi / 180
+
+        x += math.cos(lat) * math.cos(lng)
+        y += math.cos(lat) * math.sin(lng)
+        z += math.sin(lat)
+
+    x /= n
+    y /= n
+    z /= n
+
+    clng = math.atan2(y, x)
+    clat = math.atan2(z, math.sqrt(x * x + y * y))
+
+    return clat * 180 / math.pi, clng * 180 / math.pi
+
+
+def get_distance(c1, c2):
+    """ Returns approximate distance between two pairs of coordinates in km.
+
+    Args:
+        c1: coordinate pair 1
+        c2: coordinate pair 2
+
+    Returns:
+        distance in km between c1 and c2
+    """
+    # approximate radius of earth in km
+    R = 6373.0
+
+    lat1 = math.radians(c1[0])
+    lng1 = math.radians(c1[1])
+    lat2 = math.radians(c2[0])
+    lng2 = math.radians(c2[1])
+
+    dlon = lng2 - lng1
+    dlat = lat2 - lat1
+
+    a = math.sin(dlat / 2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    distance = R * c
+    return distance
+
+
+def load_subsection(G, path):
+    """ Loads subsection of roadnetwork graph
+
+    To save computation time when rendering the map for the user, we calculate a
+    subsection of the graph based on the center point of the two addresses.
+
+    Args:
+        start: Start address string
+        end: End address string
+
+    Returns:
+        A NetworkX MultiDiGraph
+    """
+
+    # Convert node 
+    coords = []
+    for id in path:
+        node = G.nodes[id]
+        coords.append((node["y"], node["x"]))
+
+    max_distance = 0
+    mc1, mc2 = None, None
+    for c1 in coords:
+        for c2 in coords:
+            dis = get_distance(c1, c2)
+            if dis > max_distance:
+                max_distance = dis
+                mc1 = c1
+                mc2 = c2
+
+    # Here we want to create a tight bounding box around the start and end points.
+    # This is accomplished by first finding the center point. Next, a distance is
+    # calcuated so that both points fit within the bounding box with some additional
+    # margin space.
+    margin_scale = 0.1
+    dis = max_distance * 1000  # Convert km to m
+    dis = dis / 2 + dis * margin_scale
+
+    G = ox.graph_from_point(get_center([mc1, mc2]), dist=dis, network_type="drive", simplify=True)
+
+    fig, _ = ox.plot_graph_route(G, path, route_color="b", route_linewidth=4, 
+                route_alpha=0.5, node_size=1, show=False, dpi=500)
+    file = "client/" + str(path[0]) + "_" + str(path[-1]) + ".png"
+    fig.savefig(file)
+    print("Saved route image:", file)
 
 
 class Joyride(joyride_pb2_grpc.JoyRideServicer):
@@ -94,7 +226,6 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
 
         # Find shortest path weighted on pre-computed travel time
         total_time, route = nx.bidirectional_dijkstra(G, start_node, end_node, weight="travel_time")
-        stl = route[-2]
 
         target_time = request.time
         current_time = total_time
@@ -106,7 +237,7 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
         while current_time < target_time - time_margin and step < eps:
             next_route = []
             last_node = start_node
-            for i in range(1, len(route)-1, 2):
+            for i in range(1, len(route) - 1, 2):
                 if current_time >= target_time - time_margin:
                     next_route.extend(route[i-1:-1])
                     break
@@ -119,7 +250,8 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
 
                 left_node = route[i - 1]
                 right_node = route[i + 1]
-                if left_node == right_node:
+                if left_node == node or right_node == node:
+                    next_route.extend([left_node, right_node])
                     continue
                 left_edge = G.get_edge_data(last_node, node)
                 right_edge = G.get_edge_data(node, right_node)
@@ -134,7 +266,7 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
                 if node in self.P:
                     interest = self.P[node]
                 rank += rank * interest
-                if rank >= self.average:
+                if rank >= self.average: 
                     above_thresh = True
                 
                 try:
@@ -164,12 +296,10 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
             next_route.append(end_node)
             route = next_route
             step += 1
-            print("Current Time:", current_time)
 
-        # Save route image
-        fig, _ = ox.plot_graph_route(G, route, route_color="b", route_linewidth=5, 
-            route_alpha=0.75, node_size=0, show=False)
-        fig.savefig("client/" + str(start_node) + "_" + str(end_node) + ".png")
+        # Save route image on separate thread
+        thread = threading.Thread(target=load_subsection, args=(G, route))
+        thread.start()
 
         # Generate directions and node data and yield to gRPC client
         last_name = None
@@ -200,6 +330,8 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
             last_bearing = bearing
 
             yield joyride_pb2.RideReply(node=route[i], message=msg)
+
+        thread.join()
     
     def GetRideRating(self, request, context):
         # Add node to database (Rating)
@@ -247,6 +379,8 @@ def serve(port, graph):
     # Do page-rank
     ranks = nx.pagerank(graph)
     print("Completed Page-Rank")
+    thread = threading.Thread(target=generate_heatmap, args=(G, ranks))
+    thread.start()
 
     # Calculate average interest
     avg_interest = 0
@@ -262,6 +396,7 @@ def serve(port, graph):
     print("Started server on port {}".format(port))
     server.wait_for_termination()
     conn.close()
+    thread.join()
 
 
 def load_data(address, r):

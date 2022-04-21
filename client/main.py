@@ -2,106 +2,12 @@ import argparse
 import cmd
 from concurrent import futures
 import logging
-import math
 import shlex
 
 import grpc
-import networkx as nx
-import osmnx as ox
 
 from gen import joyride_pb2
 from gen import joyride_pb2_grpc
-
-
-def get_center(coords):
-    """ Gets the center coordinate (lat, lng) of a list of coordinate tuples.
-
-    Args:
-        coords: list of coordinate tuples
-
-    Returns:
-        Coordinate tuple of center point
-    """
-    n = len(coords)
-    if n == 1:
-        return coords[0]
-    
-    x, y, z = 0, 0, 0
-
-    for c in coords:
-        lat = c[0] * math.pi / 180
-        lng = c[1] * math.pi / 180
-
-        x += math.cos(lat) * math.cos(lng)
-        y += math.cos(lat) * math.sin(lng)
-        z += math.sin(lat)
-
-    x /= n
-    y /= n
-    z /= n
-
-    clng = math.atan2(y, x)
-    clat = math.atan2(z, math.sqrt(x * x + y * y))
-
-    return clat * 180 / math.pi, clng * 180 / math.pi
-
-
-def get_distance(c1, c2):
-    """ Returns approximate distance between two pairs of coordinates in km.
-
-    Args:
-        c1: coordinate pair 1
-        c2: coordinate pair 2
-
-    Returns:
-        distance in km between c1 and c2
-    """
-    # approximate radius of earth in km
-    R = 6373.0
-
-    lat1 = math.radians(c1[0])
-    lng1 = math.radians(c1[1])
-    lat2 = math.radians(c2[0])
-    lng2 = math.radians(c2[1])
-
-    dlon = lng2 - lng1
-    dlat = lat2 - lat1
-
-    a = math.sin(dlat / 2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-    distance = R * c
-    return distance
-
-
-def load_subsection(start, end):
-    """ Loads subsection of roadnetwork graph
-
-    To save computation time when rendering the map for the user, we calculate a
-    subsection of the graph based on the center point of the two addresses.
-
-    Args:
-        start: Start address string
-        end: End address string
-
-    Returns:
-        A NetworkX MultiDiGraph
-    """
-
-    c1 = ox.geocode(start)
-    c2 = ox.geocode(end)
-
-    # Here we want to create a tight bounding box around the start and end points.
-    # This is accomplished by first finding the center point. Next, a distance is
-    # calcuated so that both points fit within the bounding box with some additional
-    # margin space.
-    margin_scale = 0.1
-    dis = get_distance(c1, c2)*1000  # Convert km to m
-    dis = dis/2 + dis*margin_scale
-
-    G = ox.graph_from_point(get_center([c1, c2]), dist=dis, network_type="drive", simplify=True)
-
-    return G
 
 
 def get_joyride(stub, start, end, time):
@@ -122,24 +28,20 @@ def get_joyride(stub, start, end, time):
     Returns:
         Returns a valid route from the gRPC server
     """
-    with futures.ThreadPoolExecutor() as executor:
-        future = executor.submit(load_subsection, start, end)
 
-        # Stream nodes from stub and calculate path
-        nodes = []
-        directions = []
+    # Stream nodes from stub and calculate path
+    nodes = []
+    directions = []
 
-        stream = stub.GetJoyRide(joyride_pb2.RideRequest(start=start, end=end, time=time))
-        for response in stream:
-            if response == grpc.aio.EOF:
-                break
+    stream = stub.GetJoyRide(joyride_pb2.RideRequest(start=start, end=end, time=time))
+    for response in stream:
+        if response == grpc.aio.EOF:
+            break
 
-            nodes.append(response.node)
-            if response.message != "":
-                directions.append(response.message)
-                print(response.message)
-
-        _ = future.result()
+        nodes.append(response.node)
+        if response.message != "":
+            directions.append(response.message)
+            print(response.message)
 
     return nodes
 
@@ -222,7 +124,14 @@ def run(ip, port):
         shell = AppShell(stub)
         while True:
             try:
-                print()
+                welcome = """
+                         __            ____  _     __   
+                        / /___  __  __/ __ \(_)___/ /__ 
+                   __  / / __ \/ / / / /_/ / / __  / _ \\
+                  / /_/ / /_/ / /_/ / _, _/ / /_/ /  __/
+                  \____/\____/\__, /_/ |_/_/\__,_/\___/ 
+                             /____/                     \n"""
+                print(welcome)
                 shell.cmdloop()
                 break
             except KeyboardInterrupt:
