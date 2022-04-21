@@ -1,4 +1,5 @@
 import argparse
+import copy
 from concurrent import futures
 from multiprocessing import Manager
 import threading
@@ -51,7 +52,7 @@ def generate_heatmap(G, ranks):
     map_name = "RdYlGn"
     nx.set_node_attributes(G, ranks, "rank")
     nc = plot.get_node_colors_by_attr(G, "rank", num_bins=20, cmap=map_name)
-    ns = 50
+    ns = 15
 
     fig, ax = ox.plot_graph(G, node_color=nc, node_size=ns, edge_linewidth=1.5, 
         figsize=(13, 13), bgcolor="white", show=False)
@@ -144,7 +145,7 @@ def get_distance(c1, c2):
     return distance
 
 
-def load_subsection(G, path):
+def load_subsection(G, path, shortest):
     """ Loads subsection of roadnetwork graph
 
     To save computation time when rendering the map for the user, we calculate a
@@ -184,7 +185,7 @@ def load_subsection(G, path):
 
     G = ox.graph_from_point(get_center([mc1, mc2]), dist=dis, network_type="drive", simplify=True)
 
-    fig, _ = ox.plot_graph_route(G, path, route_color="b", route_linewidth=4, 
+    fig, _ = ox.plot_graph_routes(G, [shortest, path], route_colors=["b", "g"], route_linewidths=4, 
                 route_alpha=0.5, node_size=1, show=False, dpi=500)
     file = "client/" + str(path[0]) + "_" + str(path[-1]) + ".png"
     fig.savefig(file)
@@ -226,6 +227,7 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
 
         # Find shortest path weighted on pre-computed travel time
         total_time, route = nx.bidirectional_dijkstra(G, start_node, end_node, weight="travel_time")
+        shortest = copy.deepcopy(route)
 
         target_time = request.time
         current_time = total_time
@@ -298,7 +300,7 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
             step += 1
 
         # Save route image on separate thread
-        thread = threading.Thread(target=load_subsection, args=(G, route))
+        thread = threading.Thread(target=load_subsection, args=(G, route, shortest), daemon=True)
         thread.start()
 
         # Generate directions and node data and yield to gRPC client
@@ -331,8 +333,6 @@ class Joyride(joyride_pb2_grpc.JoyRideServicer):
 
             yield joyride_pb2.RideReply(node=route[i], message=msg)
 
-        thread.join()
-    
     def GetRideRating(self, request, context):
         # Add node to database (Rating)
         rating = request.rating
